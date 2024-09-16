@@ -1,0 +1,727 @@
+import tkinter as tk
+from tkinter import messagebox
+import sqlite3
+import random
+import string
+import webbrowser
+from threading import Thread
+from flask import Flask, render_template_string
+
+# Δημιουργία Flask εφαρμογής
+app = Flask(__name__)
+
+# HTML περιεχόμενο για την σελίδα των κανόνων
+rules_html = """
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <title>Κανόνες</title>
+</head>
+<body>
+    <h1>Κανόνες του Tennis Ladder</h1>
+    <p>1. Ο αγώνας ξεκινά με ρίψη νομίσματος για την επιλογή σερβίς ή υποδοχής.</p>
+    <p>2. Ο παίκτης πρέπει να σερβίρει εναλλάξ μετά από κάθε πόντο.</p>
+    <p>3. Ένας αγώνας αποτελείται από σετ που κερδίζονται από τον πρώτο παίκτη που θα φτάσει τους 6 πόντους.</p>
+    <p>4. Εάν το σκορ είναι 5-5, το σετ συνεχίζεται μέχρι κάποιος να κερδίσει με διαφορά 2 πόντων.</p>
+    <p>5. Το παιχνίδι παίζεται σύμφωνα με τους διεθνείς κανονισμούς του Tennis Ladder.</p>
+    <h2>Πρόκληση Παίκτη</h2>
+    <p>Για να προκαλέσετε έναν παίκτη, εισάγετε το ID σας και επιλέξτε έναν παίκτη με υψηλότερη κατάταξη από εσάς.</p>
+    <p>Ο τελευταίος παίκτης μπορεί να προκαλέσει έως και πέντε παίκτες πάνω από αυτόν οι υπόλοιποι παίκτες μέχρι τρείς θέσεις.</p>
+    <h2>Εγγραφή Νέου Παίκτη</h2>
+    <p>Νέοι παίκτες ξεκινούν τελευταίοι στην κατάταξη.</p>
+    <p>Η εγγραφή η διαγραφή και η πρόκληση παίκτη γίνεται υποβάλλοντας αίτημα με το προσωπικό τους ID και εγκρίνεται από τον διαχειριστή.</p>
+</body>
+</html>
+"""
+
+# HTML περιεχόμενο για τη σελίδα του ιστορικού αγώνων
+history_html = """
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <title>Ιστορικό Αγώνων</title>
+<body>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>Ιστορικό Αγώνων</h1>
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>Νικητής</th>
+            <th>Ηττημένος</th>
+            <th>Ημερομηνία</th>
+        </tr>
+        {% for match in matches %}
+        <tr>
+            <td>{{ match.id }}</td>
+            <td>{{ match.winner_name }} (ID: {{ match.winner_id }})</td>
+            <td>{{ match.loser_name }} (ID: {{ match.loser_id }})</td>
+            <td>{{ match.date }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
+"""
+
+# HTML περιεχόμενο για την αρχική σελίδα
+main_page_html = """
+<!DOCTYPE html>
+<html lang="el">
+<head>
+    <meta charset="UTF-8">
+    <title>Καλωσόρισες στο Πρωτάθλημα Ladder</title>
+</head>
+<body>
+    <h1>Καλωσόρισες στο Πρωτάθλημα Ladder</h1>
+    <p>Για να δείτε τους κανόνες, πηγαίνετε <a href="/rules">εδώ</a>.</p>
+    <p>Για να δείτε το ιστορικό των αγώνων, πηγαίνετε <a href="/history">εδώ</a>.</p>
+</body>
+</html>
+"""
+
+# Διαδρομή για την εμφάνιση της σελίδας των κανόνων και του ιστορικού
+@app.route('/')
+def main_page():
+    return render_template_string(main_page_html)
+
+@app.route('/rules')
+def rules():
+    return render_template_string(rules_html)
+
+@app.route('/history')
+def history():
+    # Ανάκτηση των αγώνων από τη βάση δεδομένων
+    conn = sqlite3.connect('tennis_ladder.db')
+    c = conn.cursor()
+    c.execute("SELECT id, winner_id, winner_name, loser_id, loser_name, date FROM matches")
+    matches = c.fetchall()
+    conn.close()
+
+    # Διαμόρφωση των δεδομένων σε μορφή λίστας από λεξικά για ευκολότερη απόδοση στο HTML
+    matches_data = []
+    for match in matches:
+        matches_data.append({
+            "id": match[0],
+            "winner_id": match[1],
+            "winner_name": match[2],
+            "loser_id": match[3],
+            "loser_name": match[4],
+            "date": match[5]
+        })
+
+    # Απόδοση του προτύπου με τα δεδομένα των αγώνων
+    return render_template_string(history_html, matches=matches_data)
+
+# Συνάρτηση για την εκκίνηση του Flask server
+def start_flask_app():
+    app.run(host='127.0.0.1', port=5000)
+
+# Κλάση για την εφαρμογή Tennis Ladder
+class TennisLadderApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Tennis Ladder App")
+
+        # Σύνδεση στη βάση δεδομένων
+        self.conn = sqlite3.connect('tennis_ladder.db')
+        self.c = self.conn.cursor()
+
+        # Δημιουργία πινάκων
+        self.create_tables()
+
+        # Αρχικοποίηση κατάταξης και ιστορικού
+        self.initialize_ladder()
+
+        # Δημιουργία πλαισίων
+        self.create_widgets()
+
+        # Κλείσιμο της σύνδεσης όταν κλείνει το παράθυρο
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+    # Δημιουργία των πινάκων στη βάση δεδομένων
+    def create_tables(self):
+        # Δημιουργία πίνακα παικτών
+        self.c.execute('''CREATE TABLE IF NOT EXISTS players (
+                          id TEXT PRIMARY KEY,
+                          first_name TEXT,
+                          last_name TEXT,
+                          age INTEGER,
+                          matches_won INTEGER,
+                          matches_lost INTEGER,
+                          points INTEGER
+                          )''')
+        # Δημιουργία πίνακα αγώνων
+        self.c.execute('''CREATE TABLE IF NOT EXISTS matches (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          winner_id TEXT,
+                          winner_name TEXT,
+                          loser_id TEXT,
+                          loser_name TEXT,
+                          date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          FOREIGN KEY (winner_id) REFERENCES players (id),
+                          FOREIGN KEY (loser_id) REFERENCES players (id)
+                          )''')
+        # Δημιουργία πίνακα κατάταξης
+        self.c.execute('''CREATE TABLE IF NOT EXISTS rankings (
+                          player_id TEXT PRIMARY KEY,
+                          first_name TEXT,
+                          last_name TEXT,
+                          age INTEGER,
+                          ranking INTEGER,
+                          FOREIGN KEY (player_id) REFERENCES players (id)
+                          )''')
+        # Δημιουργία πίνακα αιτημάτων εγγραφής
+        self.c.execute('''CREATE TABLE IF NOT EXISTS registration_requests (
+                          id TEXT PRIMARY KEY,
+                          first_name TEXT,
+                          last_name TEXT,
+                          age INTEGER
+                          )''')
+        # Δημιουργία πίνακα αιτημάτων διαγραφής
+        self.c.execute('''CREATE TABLE IF NOT EXISTS deletion_requests (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          player_id TEXT,
+                          FOREIGN KEY (player_id) REFERENCES players (id)
+                          )''')
+        # Δημιουργία πίνακα προκλήσεων
+        self.c.execute('''CREATE TABLE IF NOT EXISTS challenges (
+                          challenger_id TEXT,
+                          opponent_id TEXT,
+                          date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          FOREIGN KEY (challenger_id) REFERENCES players (id),
+                          FOREIGN KEY (opponent_id) REFERENCES players (id)
+                          )''')
+        # Δημιουργία πίνακα αιτημάτων καταγραφής αποτελεσμάτων
+        self.c.execute('''CREATE TABLE IF NOT EXISTS match_requests (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          winner_id TEXT,
+                          loser_id TEXT,
+                          date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                          FOREIGN KEY (winner_id) REFERENCES players (id),
+                          FOREIGN KEY (loser_id) REFERENCES players (id)
+                          )''')
+        # Επιβεβαίωση των αλλαγών στη βάση δεδομένων
+        self.conn.commit()
+
+    # Αρχικοποίηση της κατάταξης και του ιστορικού
+    def initialize_ladder(self):
+        # Έλεγχος αν υπάρχουν ήδη παίκτες στη βάση δεδομένων
+        self.c.execute("SELECT COUNT(*) FROM players")
+        if self.c.fetchone()[0] > 0:
+            return  # Αν υπάρχουν ήδη παίκτες, μην κάνεις τίποτα
+
+        # Δημιουργία αρχικών παικτών
+        initial_players = [
+            ("Γιάννης", "Παπαδόπουλος", 30), ("Μαρία", "Καραγιάννη", 25), ("Κώστας", "Παπακώνστα", 28),
+            ("Ελένη", "Σταθοπούλου", 22), ("Πέτρος", "Αθανασίου", 35), ("Σοφία", "Αλεξίου", 27),
+            ("Ανδρέας", "Λεβέντης", 32), ("Ειρήνη", "Αργυρού", 24), ("Θοδωρής", "Βασιλείου", 26),
+            ("Άννα", "Δημητρίου", 21), ("Δημήτρης", "Μανώλης", 29), ("Κατερίνα", "Νικολάου", 23),
+            ("Νίκος", "Αντωνίου", 31), ("Βασιλική", "Λογοθέτη", 28), ("Χρήστος", "Παπαδόπουλος", 33)
+        ]
+
+        for i, (first_name, last_name, age) in enumerate(initial_players):
+            player_id = self.generate_unique_id()
+            points = random.randint(1, 100)
+            self.c.execute(
+                "INSERT INTO players (id, first_name, last_name, age, matches_won, matches_lost, points) VALUES (?, ?, ?, ?, 0, 0, ?)",
+                (player_id, first_name, last_name, age, points))
+            self.c.execute("INSERT INTO rankings (player_id, first_name, last_name, age, ranking) VALUES (?, ?, ?, ?, ?)",
+                           (player_id, first_name, last_name, age, i + 1))
+        self.conn.commit()
+
+        # Δημιουργία τυχαίου ιστορικού αγώνων
+        self.c.execute("SELECT id, first_name, last_name FROM players")
+        player_data = self.c.fetchall()
+        for _ in range(10):  # 10 τυχαίοι αγώνες
+            winner, loser = random.sample(player_data, 2)
+            self.c.execute("INSERT INTO matches (winner_id, winner_name, loser_id, loser_name) VALUES (?, ?, ?, ?)",
+                           (winner[0], f"{winner[1]} {winner[2]}", loser[0], f"{loser[1]} {loser[2]}"))
+        self.conn.commit()
+
+    # Δημιουργία των widgets της εφαρμογής
+    def create_widgets(self):
+        # Πλαίσιο για επιλογές
+        options_frame = tk.Frame(self.root, padx=10, pady=10)
+        options_frame.pack(fill="x")
+
+        # Κουμπιά επιλογών(row: Καθορίζει τη γραμμή στην οποία θα τοποθετηθεί το widget. Οι γραμμές αριθμούνται ξεκινώντας από το 0.
+        # column: Καθορίζει τη στήλη στην οποία θα τοποθετηθεί το widget. Οι στήλες αριθμούνται ξεκινώντας από το 0.padx: Καθορίζει το οριζόντιο εξωτερικό περιθώριο (padding) γύρω από το widget. Το padding προστίθεται αριστερά και δεξιά από το widget.
+        # pady: Καθορίζει το κάθετο εξωτερικό περιθώριο (padding) γύρω από το widget. Το padding προστίθεται πάνω και κάτω από το widget.Grid διαχειριστή σε συνδυασμό με τα row, column, padx, και pady
+        self.register_button = tk.Button(options_frame, text="Εγγραφή Παίκτη", command=self.register_player, width=20)
+        self.register_button.grid(row=0, column=0, padx=5, pady=5)
+
+        self.delete_button = tk.Button(options_frame, text="Διαγραφή Παίκτη", command=self.delete_player, width=20)
+        self.delete_button.grid(row=1, column=0, padx=5, pady=5)
+
+        self.admin_button = tk.Button(options_frame, text="Είσοδος Admin", command=self.admin_login, width=20)
+        self.admin_button.grid(row=0, column=1, padx=5, pady=5)
+
+        self.view_ladder_button = tk.Button(options_frame, text="Προβολή Κατάταξης", command=self.view_ladder, width=20)
+        self.view_ladder_button.grid(row=0, column=2, padx=5, pady=5)
+
+        self.view_history_button = tk.Button(options_frame, text="Προβολή Ιστορικού", command=self.view_history,
+                                             width=20)
+        self.view_history_button.grid(row=1, column=1, padx=5, pady=5)
+
+        self.rules_button = tk.Button(options_frame, text="Κανόνες", command=self.open_rules_url, width=20)
+        self.rules_button.grid(row=1, column=2, padx=5, pady=5)
+
+        self.challenge_button = tk.Button(options_frame, text="Πρόκληση Παίκτη", command=self.challenge_player,
+                                          width=20)
+        self.challenge_button.grid(row=2, column=0, padx=5, pady=5)
+
+        self.view_challenges_button = tk.Button(options_frame, text="Προβολή Προκλήσεων", command=self.view_challenges,
+                                                width=20)
+        self.view_challenges_button.grid(row=2, column=1, padx=5, pady=5)
+
+        self.record_match_button = tk.Button(options_frame, text="Καταγραφή Αποτελέσματος", command=self.record_match, width=20)
+        self.record_match_button.grid(row=2, column=2, padx=5, pady=5)
+
+        self.exit_button = tk.Button(options_frame, text="Έξοδος", command=self.on_closing, width=20)
+        self.exit_button.grid(row=3, column=1, padx=5, pady=5)
+
+    # Μέθοδος για την εγγραφή νέου παίκτη
+    def register_player(self):
+        # Παράθυρο εγγραφής νέου παίκτη
+        register_window = tk.Toplevel(self.root)
+        register_window.title("Εγγραφή Νέου Παίκτη")
+        register_window.geometry("300x150")
+
+        tk.Label(register_window, text="Όνομα:").grid(row=0, column=0, padx=10, pady=5)
+        tk.Label(register_window, text="Επώνυμο:").grid(row=1, column=0, padx=10, pady=5)
+        tk.Label(register_window, text="Ηλικία:").grid(row=2, column=0, padx=10, pady=5)
+
+        first_name_entry = tk.Entry(register_window)
+        first_name_entry.grid(row=0, column=1, padx=10, pady=5)
+        last_name_entry = tk.Entry(register_window)
+        last_name_entry.grid(row=1, column=1, padx=10, pady=5)
+        age_entry = tk.Entry(register_window)
+        age_entry.grid(row=2, column=1, padx=10, pady=5)
+
+        def submit_registration():
+            # Υποβολή αίτησης εγγραφής
+            first_name = first_name_entry.get()
+            last_name = last_name_entry.get()
+            age = age_entry.get()
+
+            if not first_name.isalpha() or not last_name.isalpha():
+                messagebox.showerror("Σφάλμα", "Το όνομα και το επώνυμο πρέπει να περιέχουν μόνο γράμματα.")
+                return
+
+            if not age.isdigit():
+                messagebox.showerror("Σφάλμα", "Η ηλικία πρέπει να είναι αριθμός.")
+                return
+
+            player_id = self.generate_unique_id()
+            self.c.execute("INSERT INTO registration_requests (id, first_name, last_name, age) VALUES (?, ?, ?, ?)",
+                           (player_id, first_name, last_name, int(age)))
+            self.conn.commit()
+            messagebox.showinfo("Επιτυχία", "Το αίτημα εγγραφής υποβλήθηκε.")
+            register_window.destroy()
+
+        submit_button = tk.Button(register_window, text="Υποβολή", command=submit_registration)
+        submit_button.grid(row=3, columnspan=2, pady=10)
+
+    # Μέθοδος για τη διαγραφή παίκτη
+    def delete_player(self):
+        # Παράθυρο διαγραφής παίκτη
+        delete_window = tk.Toplevel(self.root)
+        delete_window.title("Διαγραφή Παίκτη")
+        delete_window.geometry("300x100")
+
+        tk.Label(delete_window, text="ID Παίκτη:").grid(row=0, column=0, padx=10, pady=5)
+        id_entry = tk.Entry(delete_window)
+        id_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        def submit_deletion():
+            # Υποβολή αίτησης διαγραφής
+            player_id = id_entry.get()
+            if player_id:
+                self.c.execute("INSERT INTO deletion_requests (player_id) VALUES (?)", (player_id,))
+                self.conn.commit()
+                messagebox.showinfo("Επιτυχία", "Το αίτημα διαγραφής υποβλήθηκε.")
+                delete_window.destroy()
+            else:
+                messagebox.showerror("Σφάλμα", "Εισάγετε έγκυρο ID.")
+
+        submit_button = tk.Button(delete_window, text="Υποβολή", command=submit_deletion)
+        submit_button.grid(row=1, columnspan=2, pady=10)
+
+    # Μέθοδος για την είσοδο διαχειριστή
+    def admin_login(self):
+        # Παράθυρο εισόδου διαχειριστή
+        admin_window = tk.Toplevel(self.root)
+        admin_window.title("Είσοδος Admin")
+        admin_window.geometry("300x100")
+
+        tk.Label(admin_window, text="Κωδικός:").grid(row=0, column=0, padx=10, pady=5)
+        password_entry = tk.Entry(admin_window, show="*")
+        password_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        def submit_login():
+            # Υποβολή κωδικού διαχειριστή
+            password = password_entry.get()
+            if password == "admin":
+                self.admin_panel()
+                admin_window.destroy()
+            else:
+                messagebox.showerror("Σφάλμα", "Λάθος κωδικός.")
+
+        submit_button = tk.Button(admin_window, text="Είσοδος", command=submit_login)
+        submit_button.grid(row=1, columnspan=2, pady=10)
+
+    # Συνάρτηση για την αποδοχή προκλήσεων
+    def accept_challenge(self, challenger_id, opponent_id):
+        self.update_ladder(challenger_id, opponent_id)
+        self.c.execute("DELETE FROM challenges WHERE challenger_id = ? AND opponent_id = ?", (challenger_id, opponent_id))
+        self.conn.commit()
+        messagebox.showinfo("Επιτυχία", f"Η πρόκληση του παίκτη με ID: {challenger_id} προς τον παίκτη με ID: {opponent_id} εγκρίθηκε.")
+
+    # Μέθοδος για την αποδοχή αποτελεσμάτων αγώνα
+    def accept_match_result(self, match_request_id, winner_id, loser_id):
+        # Εισαγωγή του αποτελέσματος του αγώνα στη βάση δεδομένων
+        self.c.execute("SELECT first_name, last_name FROM players WHERE id = ?", (winner_id,))
+        winner = self.c.fetchone()
+        self.c.execute("SELECT first_name, last_name FROM players WHERE id = ?", (loser_id,))
+        loser = self.c.fetchone()
+
+        if winner and loser:
+            self.c.execute("INSERT INTO matches (winner_id, winner_name, loser_id, loser_name) VALUES (?, ?, ?, ?)",
+                           (winner_id, f"{winner[0]} {winner[1]}", loser_id, f"{loser[0]} {loser[1]}"))
+
+            # Ενημέρωση της κατάταξης
+            self.update_ladder(winner_id, loser_id)
+
+            # Ενημέρωση του ιστορικού νικών και ηττών για τους παίκτες
+            self.c.execute("UPDATE players SET matches_won = matches_won + 1 WHERE id = ?", (winner_id,))
+            self.c.execute("UPDATE players SET matches_lost = matches_lost + 1 WHERE id = ?", (loser_id,))
+
+            # Διαγραφή του αιτήματος
+            self.c.execute("DELETE FROM match_requests WHERE id = ?", (match_request_id,))
+
+            self.conn.commit()
+            messagebox.showinfo("Επιτυχία", "Το αποτέλεσμα του αγώνα καταγράφηκε.")
+        else:
+            messagebox.showerror("Σφάλμα", "Εισάγετε έγκυρα IDs παικτών.")
+
+    # Μέθοδος για τον πίνακα διαχείρισης
+    def admin_panel(self):
+        # Παράθυρο διαχείρισης
+        admin_panel_window = tk.Toplevel(self.root)
+        admin_panel_window.title("Πίνακας Διαχειριστή")
+        admin_panel_window.geometry("400x300")
+
+        def process_registration_requests():
+            # Επεξεργασία αιτημάτων εγγραφής
+            self.c.execute("SELECT * FROM registration_requests")
+            requests = self.c.fetchall()
+            if not requests:
+                messagebox.showinfo("Πληροφορία", "Δεν υπάρχουν αιτήματα εγγραφής.")
+                return
+            for request in requests:
+                request_id, first_name, last_name, age = request
+                result = messagebox.askyesno("Αίτημα Εγγραφής",
+                                             f"ID: {request_id}\nΌνομα: {first_name} {last_name}\nΗλικία: {age}\n\nΘέλετε να εγκρίνετε την εγγραφή;")
+                if result:
+                    points = 0  # Ξεκινάει με 0 βαθμούς
+                    self.c.execute(
+                        "INSERT INTO players (id, first_name, last_name, age, matches_won, matches_lost, points) VALUES (?, ?, ?, ?, 0, 0, ?)",
+                        (request_id, first_name, last_name, age, points))
+                    self.c.execute("SELECT COUNT(*) FROM rankings")
+                    rank = self.c.fetchone()[0] + 1  # Θέση κατάταξης νέου παίκτη (τέλος)
+                    self.c.execute("INSERT INTO rankings (player_id, first_name, last_name, age, ranking) VALUES (?, ?, ?, ?, ?)",
+                                   (request_id, first_name, last_name, age, rank))
+                self.c.execute("DELETE FROM registration_requests WHERE id = ?", (request_id,))
+            self.conn.commit()
+            messagebox.showinfo("Επιτυχία", "Τα αιτήματα εγγραφής διεκπεραιώθηκαν.")
+
+        def process_deletion_requests():
+            # Επεξεργασία αιτημάτων διαγραφής
+            self.c.execute("SELECT * FROM deletion_requests")
+            requests = self.c.fetchall()
+            if not requests:
+                messagebox.showinfo("Πληροφορία", "Δεν υπάρχουν αιτήματα διαγραφής.")
+                return
+            for request in requests:
+                request_id, player_id = request
+                self.c.execute("SELECT first_name, last_name FROM players WHERE id = ?", (player_id,))
+                player_name = self.c.fetchone()
+                if player_name:
+                    full_name = f"{player_name[0]} {player_name[1]}"
+                    result = messagebox.askyesno("Αίτημα Διαγραφής",
+                                                 f"Παίκτης: {full_name} (ID: {player_id})\n\nΘέλετε να διαγράψετε τον παίκτη;")
+                    if result:
+                        self.c.execute("DELETE FROM players WHERE id = ?", (player_id,))
+                        self.c.execute("DELETE FROM rankings WHERE player_id = ?", (player_id,))
+                        self.c.execute(
+                            "UPDATE rankings SET ranking = ranking - 1 WHERE ranking > (SELECT ranking FROM rankings WHERE player_id = ?)",
+                            (player_id,))
+                    self.c.execute("DELETE FROM deletion_requests WHERE id = ?", (request_id,))
+            self.conn.commit()
+            messagebox.showinfo("Επιτυχία", "Τα αιτήματα διαγραφής διεκπεραιώθηκαν.")
+
+        def process_challenge_requests():
+            # Επεξεργασία αιτημάτων προκλήσεων
+            self.c.execute('''SELECT c.challenger_id, p1.first_name, p1.last_name, r1.ranking, c.opponent_id, p2.first_name, p2.last_name, r2.ranking, c.date
+                              FROM challenges c
+                              JOIN players p1 ON c.challenger_id = p1.id
+                              JOIN players p2 ON c.opponent_id = p2.id
+                              JOIN rankings r1 ON c.challenger_id = r1.player_id
+                              JOIN rankings r2 ON c.opponent_id = r2.player_id''')
+            requests = self.c.fetchall()
+            if not requests:
+                messagebox.showinfo("Πληροφορία", "Δεν υπάρχουν αιτήματα προκλήσεων.")
+                return
+            for request in requests:
+                challenger_id, challenger_first_name, challenger_last_name, challenger_ranking, opponent_id, opponent_first_name, opponent_last_name, opponent_ranking, date = request
+                result = messagebox.askyesno("Αίτημα Πρόκλησης",
+                                             f"Προκαλών: {challenger_first_name} {challenger_last_name} (ID: {challenger_id}, Θέση: {challenger_ranking})\n"
+                                             f"Προκαλούμενος: {opponent_first_name} {opponent_last_name} (ID: {opponent_id}, Θέση: {opponent_ranking})\n"
+                                             f"Ημερομηνία: {date}\n\nΘέλετε να εγκρίνετε την πρόκληση;")
+                if result:
+                    self.accept_challenge(challenger_id, opponent_id)
+            self.conn.commit()
+            messagebox.showinfo("Επιτυχία", "Τα αιτήματα προκλήσεων διεκπεραιώθηκαν.")
+
+        def process_match_requests():
+            # Επεξεργασία αιτημάτων καταγραφής αποτελεσμάτων αγώνων
+            self.c.execute("SELECT * FROM match_requests")
+            requests = self.c.fetchall()
+            if not requests:
+                messagebox.showinfo("Πληροφορία", "Δεν υπάρχουν αιτήματα καταγραφής αποτελεσμάτων.")
+                return
+            for request in requests:
+                match_request_id, winner_id, loser_id, date = request
+                result = messagebox.askyesno("Αίτημα Καταγραφής Αποτελέσματος",
+                                             f"Νικητής ID: {winner_id}\nΗττημένος ID: {loser_id}\nΗμερομηνία: {date}\n\nΘέλετε να εγκρίνετε την καταγραφή;")
+                if result:
+                    self.accept_match_result(match_request_id, winner_id, loser_id)
+            self.conn.commit()
+            messagebox.showinfo("Επιτυχία", "Τα αιτήματα καταγραφής αποτελεσμάτων διεκπεραιώθηκαν.")
+
+        # Κουμπιά επεξεργασίας αιτημάτων
+        process_registration_requests_button = tk.Button(admin_panel_window, text="Επεξεργασία Αιτημάτων Εγγραφής",
+                                                         command=process_registration_requests)
+        process_registration_requests_button.pack(pady=10)
+
+        process_deletion_requests_button = tk.Button(admin_panel_window, text="Επεξεργασία Αιτημάτων Διαγραφής",
+                                                     command=process_deletion_requests)
+        process_deletion_requests_button.pack(pady=10)
+
+        process_challenge_requests_button = tk.Button(admin_panel_window, text="Επεξεργασία Αιτημάτων Προκλήσεων",
+                                                      command=process_challenge_requests)
+        process_challenge_requests_button.pack(pady=10)
+
+        process_match_requests_button = tk.Button(admin_panel_window, text="Επεξεργασία Αιτημάτων Καταγραφής Αποτελεσμάτων",
+                                                  command=process_match_requests)
+        process_match_requests_button.pack(pady=10)
+
+    # Μέθοδος για την προβολή της κατάταξης
+    def view_ladder(self):
+        # Παράθυρο προβολής κατάταξης
+        ladder_window = tk.Toplevel(self.root)
+        ladder_window.title("Κατάταξη Παικτών")
+        ladder_window.geometry("700x600")  # Αύξηση του μεγέθους του παραθύρου
+
+        self.c.execute("SELECT player_id, first_name, last_name, age, ranking FROM rankings ORDER BY ranking")
+        players = self.c.fetchall()
+
+        header = "{:<10} {:<15} {:<15} {:<10} {:<10}".format("ID", "Όνομα", "Επώνυμο", "Ηλικία", "Θέση")
+        tk.Label(ladder_window, text=header, anchor="w", justify="left", font=("Courier", 12, "bold")).pack(fill="x", padx=10, pady=2)
+
+        for player in players:
+            player_info = "{:<10} {:<15} {:<15} {:<10} {:<10}".format(player[0], player[1], player[2], player[3], player[4])
+            label = tk.Label(ladder_window, text=player_info, anchor="w", justify="left", font=("Courier", 12))
+            label.pack(fill="x", padx=10, pady=2)
+
+    # Μέθοδος για την προβολή ιστορικού αγώνων
+    def view_history(self):
+        # Παράθυρο προβολής ιστορικού αγώνων
+        history_window = tk.Toplevel(self.root)
+        history_window.title("Ιστορικό Παιχνιδιών")
+        history_window.geometry("900x600")  # Αύξηση του μεγέθους του παραθύρου
+
+        self.c.execute("SELECT id, winner_id, winner_name, loser_id, loser_name, date FROM matches")
+        matches = self.c.fetchall()
+
+        header = "{:<5} {:<20} {:<30} {:<20} {:<20} {:<20}".format(" ", "ID Νικητή", "Νικητής", "ID Ηττημένου", "Ηττημένος", "Ημερομηνία")
+        tk.Label(history_window, text=header, anchor="w", justify="left", font=("Courier", 10, "bold")).pack(fill="x", padx=10, pady=2)
+
+        for match in matches:
+            match_info = "{:<5} {:<20} {:<30} {:<20} {:<20} {:<20}".format(match[0], match[1], match[2], match[3], match[4], match[5])
+            label = tk.Label(history_window, text=match_info, anchor="w", justify="left", font=("Courier", 10))
+            label.pack(fill="x", padx=10, pady=2)
+
+    # Μέθοδος για την πρόκληση παίκτη
+    def challenge_player(self):
+        # Παράθυρο πρόκλησης παίκτη
+        challenge_window = tk.Toplevel(self.root)
+        challenge_window.title("Πρόκληση Παίκτη")
+        challenge_window.geometry("400x400")
+
+        tk.Label(challenge_window, text="Εισάγετε το ID σας:").grid(row=0, column=0, padx=10, pady=5)
+        player_id_entry = tk.Entry(challenge_window)
+        player_id_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        def show_challenge_options():
+            # Εμφάνιση επιλογών πρόκλησης
+            player_id = player_id_entry.get()
+            self.c.execute("SELECT first_name, last_name FROM players WHERE id = ?", (player_id,))
+            player_name = self.c.fetchone()
+            if player_name:
+                current_player_name = f"{player_name[0]} {player_name[1]}"
+                self.c.execute("SELECT player_id, first_name, last_name, age FROM rankings ORDER BY ranking")
+                players = self.c.fetchall()
+                current_index = next(i for i, player in enumerate(players) if player[0] == player_id)
+                if current_index == len(players) - 1:
+                    # Τελευταίος παίκτης μπορεί να προκαλέσει έως πέντε παίκτες πάνω από αυτόν
+                    challengeable_players = players[max(0, current_index - 5):current_index]
+                else:
+                    # Οι υπόλοιποι παίκτες μπορούν να προκαλέσουν μόνο παίκτες με υψηλότερη κατάταξη
+                    challengeable_players = players[max(0, current_index - 3):current_index]
+
+                challenge_list = [f"{player[1]} {player[2]} (ID: {player[0]})" for player in challengeable_players]
+                challenge_id = tk.StringVar(challenge_window)
+                tk.Label(challenge_window, text="Επιλέξτε Παίκτη για Πρόκληση:").grid(row=2, column=0, padx=10, pady=5)
+                challenge_menu = tk.OptionMenu(challenge_window, challenge_id, *challenge_list)
+                challenge_menu.grid(row=2, column=1, padx=10, pady=5)
+
+                def submit_challenge():
+                    selected_player = challenge_id.get().split(" (ID: ")[-1].replace(")", "")
+                    self.c.execute("INSERT INTO challenges (challenger_id, opponent_id) VALUES (?, ?)",
+                                   (player_id, selected_player))
+                    self.conn.commit()
+                    messagebox.showinfo("Επιτυχία", f"Έγινε πρόκληση στον παίκτη με ID: {selected_player}")
+                    challenge_window.destroy()
+
+                submit_button = tk.Button(challenge_window, text="Πρόκληση", command=submit_challenge)
+                submit_button.grid(row=3, columnspan=2, pady=10)
+            else:
+                messagebox.showerror("Σφάλμα", "Το ID που εισάγατε δεν βρέθηκε.")
+
+        submit_current_player_button = tk.Button(challenge_window, text="Υποβολή", command=show_challenge_options)
+        submit_current_player_button.grid(row=1, columnspan=2, pady=10)
+
+    # Μέθοδος για την καταγραφή αποτελέσματος αγώνα
+    def record_match(self):
+        # Παράθυρο καταγραφής αποτελέσματος αγώνα
+        record_window = tk.Toplevel(self.root)
+        record_window.title("Καταγραφή Αποτελέσματος Αγώνα")
+        record_window.geometry("300x200")
+
+        tk.Label(record_window, text="ID Νικητή:").grid(row=0, column=0, padx=10, pady=5)
+        winner_id_entry = tk.Entry(record_window)
+        winner_id_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        tk.Label(record_window, text="ID Ηττημένου:").grid(row=1, column=0, padx=10, pady=5)
+        loser_id_entry = tk.Entry(record_window)
+        loser_id_entry.grid(row=1, column=1, padx=10, pady=5)
+
+        def submit_result():
+            # Υποβολή αιτήματος καταγραφής αποτελέσματος αγώνα
+            winner_id = winner_id_entry.get()
+            loser_id = loser_id_entry.get()
+
+            self.c.execute("INSERT INTO match_requests (winner_id, loser_id) VALUES (?, ?)",
+                           (winner_id, loser_id))
+            self.conn.commit()
+            messagebox.showinfo("Επιτυχία", "Το αίτημα καταγραφής αποτελέσματος υποβλήθηκε για έγκριση.")
+            record_window.destroy()
+
+        submit_button = tk.Button(record_window, text="Υποβολή", command=submit_result)
+        submit_button.grid(row=2, columnspan=2, pady=10)
+
+    # Μέθοδος για την ενημέρωση της κατάταξης
+    def update_ladder(self, challenger_id, opponent_id):
+        # Ενημέρωση κατάταξης
+        self.c.execute("SELECT player_id, ranking FROM rankings ORDER BY ranking")
+        players = self.c.fetchall()
+        challenger_index = next(i for i, player in enumerate(players) if player[0] == challenger_id)
+        opponent_index = next(i for i, player in enumerate(players) if player[0] == opponent_id)
+
+        if challenger_index < opponent_index:
+            return  # Η πρόκληση δεν είναι έγκυρη, αγνοήστε την
+
+        # Αν ο χαμηλότερης θέσης νικητής κερδίσει
+        if challenger_index > opponent_index:
+            # Ανταλλαγή θέσεων
+            players[challenger_index], players[opponent_index] = players[opponent_index], players[challenger_index]
+            for i, player in enumerate(players):
+                self.c.execute("UPDATE rankings SET ranking = ? WHERE player_id = ?", (i + 1, player[0]))
+
+        self.conn.commit()
+
+    # Μέθοδος για το άνοιγμα της σελίδας των κανόνων
+    def open_rules_url(self):
+        # Άνοιγμα τοπικής σελίδας με τους κανόνες
+        webbrowser.open('http://127.0.0.1:5000')
+
+    # Δημιουργία μοναδικού αναγνωριστικού παίκτη
+    def generate_unique_id(self):
+        while True:
+            unique_id = ''.join(random.choices(string.ascii_uppercase, k=2)) + ''.join(
+                random.choices(string.digits, k=4))
+            self.c.execute("SELECT * FROM players WHERE id = ?", (unique_id,))
+            if not self.c.fetchone():
+                return unique_id
+
+    # Ανάκτηση όλων των παικτών από τη βάση δεδομένων
+    def get_all_players(self):
+        self.c.execute(
+            "SELECT id, first_name, last_name, age, matches_won, matches_lost, points FROM players ORDER BY points DESC")
+        return self.c.fetchall()
+
+    # Μέθοδος που εκτελείται κατά το κλείσιμο της εφαρμογής
+    def on_closing(self):
+        # Κλείσιμο της σύνδεσης με τη βάση δεδομένων και του παραθύρου
+        self.conn.close()
+        self.root.destroy()
+
+    # Μέθοδος για την προβολή των προκλήσεων
+    def view_challenges(self):
+        # Παράθυρο προβολής προκλήσεων
+        challenges_window = tk.Toplevel(self.root)
+        challenges_window.title("Προβολή Προκλήσεων")
+        challenges_window.geometry("500x500")
+
+        # Ανάκτηση των προκλήσεων από τη βάση δεδομένων
+        self.c.execute('''SELECT c.challenger_id, p1.first_name, p1.last_name, r1.ranking, c.opponent_id, p2.first_name, p2.last_name, r2.ranking, c.date
+                          FROM challenges c
+                          JOIN players p1 ON c.challenger_id = p1.id
+                          JOIN players p2 ON c.opponent_id = p2.id
+                          JOIN rankings r1 ON c.challenger_id = r1.player_id
+                          JOIN rankings r2 ON c.opponent_id = r2.player_id''')
+        challenges = self.c.fetchall()
+
+        for challenge in challenges:
+            challenge_info = f"Προκαλών: {challenge[1]} {challenge[2]} (ID: {challenge[0]}, Θέση: {challenge[3]}) -> Προκαλούμενος: {challenge[5]} {challenge[6]} (ID: {challenge[4]}, Θέση: {challenge[7]}) - Ημερομηνία: {challenge[8]}"
+            label = tk.Label(challenges_window, text=challenge_info, anchor="w", justify="left")
+            label.pack(fill="x", padx=10, pady=2)
+
+# Εκκίνηση του Flask server σε ξεχωριστό νήμα
+flask_thread = Thread(target=start_flask_app)
+flask_thread.daemon = True
+flask_thread.start()
+
+# Δημιουργία παραθύρου Tkinter
+root = tk.Tk()
+app = TennisLadderApp(root)
+root.mainloop()
+
